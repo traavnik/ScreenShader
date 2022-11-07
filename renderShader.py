@@ -12,7 +12,7 @@ import dxcam
 
 class MainWindow(QMainWindow):
 
-    
+
     def __init__(self):
         super().__init__()
 
@@ -109,10 +109,10 @@ gVShader = """
                 vTexCoord = aTexCoord;
             }"""
 
-gFShader = """   
+gFShader = """
             #version 330 core
             out vec4 FragColor;
-            
+
             in vec2 vTexCoord;
 
             uniform sampler2D ourTexture;
@@ -127,7 +127,7 @@ gFShaderSwirl = """
             #version 330 core
             #define PI 3.14159
             out vec4 FragColor;
-            
+
             in vec2 vTexCoord;
 
             uniform sampler2D ourTexture;
@@ -136,9 +136,9 @@ gFShaderSwirl = """
             {
                 float effectRadius = .5;
                 float effectAngle = 0.5 * PI;
-                
+
                 vec2 uv = vTexCoord.xy / 1. - vec2(.5, .5);
-                
+
                 float len = length(uv * vec2(1., 1.));
                 float angle = atan(uv.y, uv.x) + effectAngle * smoothstep(effectRadius, 0., len);
                 float radius = length(uv);
@@ -155,9 +155,9 @@ class ProjectiveGLViewer(QOpenGLWindow):
         self.camera = dxcam.create()
 
         left, top = 0, 0
-        right, bottom = left + 640, top + 640
-        region = (left, top, right, bottom)
-        # screen_shot = camera.grab(region=region)
+        right, bottom = left + 800, top + 800
+        self.region = (left, top, right, bottom)
+        # self.screen_shot = self.camera.grab(region=self.region)
         self.screen_shot = self.camera.grab()
         self.resize(500, 500)
 
@@ -188,7 +188,7 @@ class ProjectiveGLViewer(QOpenGLWindow):
         self.vert_buffer = QOpenGLBuffer()
         self.vert_buffer.create()
         self.vert_buffer.bind()
-        
+
         vertex_data = np.array([1, 1, 0,
                          1, -1, 0,
                         -1, -1, 0,
@@ -222,7 +222,11 @@ class ProjectiveGLViewer(QOpenGLWindow):
         self.screen_texture = QOpenGLTexture(QOpenGLTexture.Target2D)
         self.screen_texture.create()
         h, w, _ = self.screen_shot.shape
-        self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888))
+        # self.screen_shot =np.ascontiguousarray(self.screen_shot)
+        print(f'Image width: {w}, height: {h}')
+        print(self.screen_shot.flags)
+        # self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888))
+        self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888), genMipMaps=QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
         self.screen_texture.setMinMagFilters(QOpenGLTexture.Linear, QOpenGLTexture.Linear)
         self.screen_texture.setWrapMode(QOpenGLTexture.ClampToEdge)
 
@@ -236,11 +240,15 @@ class ProjectiveGLViewer(QOpenGLWindow):
 
     def animationLoop(self):
         # Need to avoid timer usage and do native dxcam update
+        # self.screen_shot = self.camera.grab(region=self.region)
         self.screen_shot = self.camera.grab()
+
         if self.screen_shot is not None:
             h, w, _ = self.screen_shot.shape
-            # Faser ways to update: https://stackoverflow.com/questions/3887636/how-to-manipulate-texture-content-on-the-fly/10702468#10702468
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.screen_shot)
+            # self.screen_shot =np.ascontiguousarray(self.screen_shot)
+            # Faster ways to update: https://stackoverflow.com/questions/3887636/how-to-manipulate-texture-content-on-the-fly/10702468#10702468
+            self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.RGB, QOpenGLTexture.PixelType.UInt8, self.screen_shot)
+            # glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.screen_shot)
             self.update()
 
 
