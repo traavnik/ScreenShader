@@ -7,6 +7,7 @@ from OpenGL.GL import *
 import numpy as np
 import dxcam
 import mss
+import time
 
 # screen_capture = "dxcam"
 screen_capture = "mss"
@@ -153,11 +154,13 @@ class ProjectiveGLViewer(QOpenGLWindow):
     def __init__(self):
         super().__init__()
 
+        self.frame_time = time.perf_counter()
+
         if screen_capture == "dxcam":
             self.camera = dxcam.create()
 
-            left, top = 880, 320
-            right, bottom = left + 800, top + 800
+            left, top = 0, 0
+            right, bottom = left + 2560, top + 1440
             self.region = (left, top, right, bottom)
             self.screen_shot = self.camera.grab(region=self.region)
             # self.screen_shot = self.camera.grab()
@@ -196,10 +199,18 @@ class ProjectiveGLViewer(QOpenGLWindow):
         self.vert_buffer.create()
         self.vert_buffer.bind()
 
-        vertex_data = np.array([1, 1, 0,
-                         1, -1, 0,
+        # vertex_data = np.array([1, 1, 0,
+        #                  1, -1, 0,
+        #                 -1, -1, 0,
+        #                 -1,  1, 0
+        #             ], dtype=np.float32)
+        vertex_data = np.array([
+
+
                         -1, -1, 0,
-                        -1,  1, 0
+                         1, -1, 0,
+                         1, 1, 0,
+                        -1,  1, 0,
                     ], dtype=np.float32)
         self.vert_buffer.allocate(vertex_data, vertex_data.nbytes)
 
@@ -218,10 +229,11 @@ class ProjectiveGLViewer(QOpenGLWindow):
         self.texture_buffer.create()
         self.texture_buffer.bind()
 
-        texture_data = np.array([1, 1,
+        texture_data = np.array([
+                        0.0, 1.0,
+                        1, 1,
                         1.0, 0.0,
                         0, 0,
-                        0.0, 1.0
                     ], dtype=np.float32)
         self.texture_buffer.allocate(texture_data, texture_data.nbytes)
 
@@ -251,7 +263,7 @@ class ProjectiveGLViewer(QOpenGLWindow):
         # self.elapsed_timer = QElapsedTimer()
         # self.elapsed_timer.start()
         # self.delta_time = 0
-        self.timer.start(7)
+        self.timer.start(1)
 
 
     def animationLoop(self):
@@ -277,7 +289,6 @@ class ProjectiveGLViewer(QOpenGLWindow):
             h = self.mss_screen_shot.height
             w = self.mss_screen_shot.width
             # self.screen_shot =np.ascontiguousarray(self.screen_shot)
-            # Faster ways to update: https://stackoverflow.com/questions/3887636/how-to-manipulate-texture-content-on-the-fly/10702468#10702468
             self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8, self.mss_screen_shot.raw)
             # glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.screen_shot)
             self.update()
@@ -285,6 +296,9 @@ class ProjectiveGLViewer(QOpenGLWindow):
 
 
     def paintGL(self):
+        old_frame_time = self.frame_time
+        self.frame_time = time.perf_counter()
+        print(f"Frame: {1/(self.frame_time - old_frame_time)}")
         if screen_capture == "dxcam":
             self.screen_shot = self.camera.grab(region=self.region)
             if self.screen_shot is not None:
@@ -293,7 +307,7 @@ class ProjectiveGLViewer(QOpenGLWindow):
             self.mss_screen_shot = self.mss_camera.grab(self.monitor)
             self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8, self.mss_screen_shot.raw)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        # self.shader_program.bind()
+        self.shader_program.bind()
 
         self.vert_buffer.bind()
         self.shader_program.setAttributeBuffer(0, GL_FLOAT, 0, 3)
@@ -321,6 +335,7 @@ if __name__ == '__main__':
     import sys
     app = QApplication(sys.argv)
     screens = app.screens()
+    print(screens)
     screen_geometry = screens[-1].geometry()
     print(screen_geometry)
     # fmt = QSurfaceFormat()
@@ -330,6 +345,7 @@ if __name__ == '__main__':
     # window = MainWindow()
     window = ProjectiveGLViewer()
     window.setScreen(screens[-1])
+    window.setPosition(screen_geometry.x(), screen_geometry.y())
     window.showFullScreen()
     # window.setWindowFlags(Qt.CustomizeWindowHint  | Qt.FramelessWindowHint)
     # window.show()
