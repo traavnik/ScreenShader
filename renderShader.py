@@ -6,9 +6,10 @@ from PySide6.QtGui import QOpenGLFunctions, QOpenGLContext, QImage, QSurfaceForm
 from OpenGL.GL import *
 import numpy as np
 import dxcam
+import mss
 
-
-
+# screen_capture = "dxcam"
+screen_capture = "mss"
 
 class MainWindow(QMainWindow):
 
@@ -152,14 +153,20 @@ class ProjectiveGLViewer(QOpenGLWindow):
     def __init__(self):
         super().__init__()
 
-        self.camera = dxcam.create()
+        if screen_capture == "dxcam":
+            self.camera = dxcam.create()
 
-        left, top = 0, 0
-        right, bottom = left + 800, top + 800
-        self.region = (left, top, right, bottom)
-        # self.screen_shot = self.camera.grab(region=self.region)
-        self.screen_shot = self.camera.grab()
+            left, top = 880, 320
+            right, bottom = left + 800, top + 800
+            self.region = (left, top, right, bottom)
+            self.screen_shot = self.camera.grab(region=self.region)
+            # self.screen_shot = self.camera.grab()
+        else:
+            self.monitor = {"top": 0, "left": 0, "width": 1920, "height": 1080}
+            self.mss_camera = mss.mss()
+            self.mss_screen_shot = self.mss_camera.grab(self.monitor)
         self.resize(500, 500)
+
 
 
     def initializeGL(self):
@@ -221,24 +228,35 @@ class ProjectiveGLViewer(QOpenGLWindow):
 
         self.screen_texture = QOpenGLTexture(QOpenGLTexture.Target2D)
         self.screen_texture.create()
-        h, w, _ = self.screen_shot.shape
-        # self.screen_shot =np.ascontiguousarray(self.screen_shot)
-        print(f'Image width: {w}, height: {h}')
-        print(self.screen_shot.flags)
-        # self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888))
-        self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888), genMipMaps=QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
+        if screen_capture == "dxcam":
+            h, w, _ = self.screen_shot.shape
+            self.screen_shot =np.ascontiguousarray(self.screen_shot)
+            print(f'Image width: {w}, height: {h}')
+            print(self.screen_shot.flags)
+            # self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888))
+            self.screen_texture.setData(QImage(self.screen_shot.data, w, h, 3 * w, QImage.Format_RGB888), genMipMaps=QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
+        else:
+            h = self.mss_screen_shot.height
+            w = self.mss_screen_shot.width
+            print(f'Image width: {w}, height: {h}')
+            self.screen_texture.setData(QImage(self.mss_screen_shot.raw, w, h, QImage.Format_RGBA8888), genMipMaps=QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
         self.screen_texture.setMinMagFilters(QOpenGLTexture.Linear, QOpenGLTexture.Linear)
         self.screen_texture.setWrapMode(QOpenGLTexture.ClampToEdge)
 
         self.timer = QTimer()
-        self.timer.timeout.connect(self.animationLoop)
-        self.elapsed_timer = QElapsedTimer()
-        self.elapsed_timer.start()
-        self.delta_time = 0
-        self.timer.start(1)
+        if screen_capture == "dxcam":
+            self.timer.timeout.connect(self.animationLoop)
+        else:
+            self.timer.timeout.connect(self.animationLoop_mss)
+        # self.elapsed_timer = QElapsedTimer()
+        # self.elapsed_timer.start()
+        # self.delta_time = 0
+        self.timer.start(7)
 
 
     def animationLoop(self):
+        self.update()
+        return
         # Need to avoid timer usage and do native dxcam update
         # self.screen_shot = self.camera.grab(region=self.region)
         self.screen_shot = self.camera.grab()
@@ -251,43 +269,68 @@ class ProjectiveGLViewer(QOpenGLWindow):
             # glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.screen_shot)
             self.update()
 
+    def animationLoop_mss(self):
+        self.update()
+        return
+        self.mss_screen_shot = self.mss_camera.grab(self.monitor)
+        if self.mss_screen_shot is not None:
+            h = self.mss_screen_shot.height
+            w = self.mss_screen_shot.width
+            # self.screen_shot =np.ascontiguousarray(self.screen_shot)
+            # Faster ways to update: https://stackoverflow.com/questions/3887636/how-to-manipulate-texture-content-on-the-fly/10702468#10702468
+            self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8, self.mss_screen_shot.raw)
+            # glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.screen_shot)
+            self.update()
+
+
 
     def paintGL(self):
+        if screen_capture == "dxcam":
+            self.screen_shot = self.camera.grab(region=self.region)
+            if self.screen_shot is not None:
+                self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.RGB, QOpenGLTexture.PixelType.UInt8, np.ascontiguousarray(self.screen_shot))
+        else:
+            self.mss_screen_shot = self.mss_camera.grab(self.monitor)
+            self.screen_texture.setData(0, QOpenGLTexture.PixelFormat.BGRA, QOpenGLTexture.PixelType.UInt8, self.mss_screen_shot.raw)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        self.shader_program.bind()
+        # self.shader_program.bind()
 
         self.vert_buffer.bind()
         self.shader_program.setAttributeBuffer(0, GL_FLOAT, 0, 3)
         self.shader_program.enableAttributeArray(0)
 
-        self.indices_buffer.bind()
+        # self.indices_buffer.bind()
 
         self.texture_buffer.bind()
         self.shader_program.setAttributeBuffer(1, GL_FLOAT, 0, 2)
         self.shader_program.enableAttributeArray(1)
 
-        self.shader_program.bind()
+        # self.shader_program.bind()
         self.screen_texture.bind()
         # glDrawArrays(GL_TRIANGLES, 0, 6)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
 
 
 
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        return
+    # def resizeGL(self, w, h):
+    #     glViewport(0, 0, w, h)
+    #     return
 
 
 if __name__ == '__main__':
     import sys
     app = QApplication(sys.argv)
-
+    screens = app.screens()
+    screen_geometry = screens[-1].geometry()
+    print(screen_geometry)
     # fmt = QSurfaceFormat()
     # fmt.setSamples(4)
     # QSurfaceFormat.setDefaultFormat(fmt)
 
     # window = MainWindow()
     window = ProjectiveGLViewer()
+    window.setScreen(screens[-1])
+    window.showFullScreen()
     # window.setWindowFlags(Qt.CustomizeWindowHint  | Qt.FramelessWindowHint)
-    window.show()
+    # window.show()
     sys.exit(app.exec())
